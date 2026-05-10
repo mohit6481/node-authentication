@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const sendgridTransport = require('nodemailer-sendgrid-transport');
 
+const { validationResult } = require('express-validator')
+
 const User = require('../models/user');
 const user = require('../models/user');
 
@@ -26,6 +28,11 @@ exports.getSignup = (req, res, next) => {
     path: '/signup',
     pageTitle: 'Signup',
     errorMessage: req.flash('error'),
+    oldInput: {
+      email: "",
+      password: "",
+      confirmPassword: ""
+    }
   });
 };
 
@@ -60,32 +67,39 @@ exports.postLogin = (req, res, next) => {
 exports.postSignup = (req, res, next) => {
   const email = req.body.email;
   const password = req.body.password;
-  const confirmPassword = req.body.confirmPassword;
+  const errors = validationResult(req);
 
-  User.findOne({ email: email }).then(userDoc => {
-    if (userDoc) {
-      req.flash('error', 'E-mail exits already')
-      return res.redirect('./signup');
-    }
-    return bcrypt.hash(password, 12).then(hashedPassword => {
-      const user = new User({
+  if (!errors.isEmpty()) {
+    console.log(errors)
+    return res.status(422).render('auth/signup', {
+      path: '/signup',
+      pageTitle: 'Signup',
+      errorMessage: errors.array()[0].msg,
+      oldInput: {
         email: email,
-        password: hashedPassword,
-        cart: { items: [] }
-      });
-      return user.save();
+        password: password,
+        confirmPassword: req.body.confirmPassword
+      }
+    });
+  }
 
-    }).then(result => {
-      res.redirect('/login');
-      return transporter.sendMail({
-        to: email,
-        from: 'mohitnode@mailinator.com',
-        subject: 'Signup succeded!',
-        html: '<h1>You successfully signed up!</h1>'
-      })
-    }).catch(err => console.log(err))
-  })
-    .catch(err => console.log(err))
+  bcrypt.hash(password, 12).then(hashedPassword => {
+    const user = new User({
+      email: email,
+      password: hashedPassword,
+      cart: { items: [] }
+    });
+    return user.save();
+
+  }).then(result => {
+    res.redirect('/login');
+    return transporter.sendMail({
+      to: email,
+      from: 'mohitnode@mailinator.com',
+      subject: 'Signup succeded!',
+      html: '<h1>You successfully signed up!</h1>'
+    })
+  }).catch(err => console.log(err))
 };
 
 exports.postLogout = (req, res, next) => {
@@ -169,19 +183,19 @@ exports.postNewPassword = (req, res, next) => {
     resetTokenExpiration: { $gt: new Date() },
     _id: userId
   })
-  .then(user => {
-    resetUser = user;
-    return bcrypt.hash(newPassword, 12)
-  })
-  .then(hashedPassword => {
-    resetUser.password = hashedPassword;
-    resetUser.resetToken = undefined;
-    resetUser.resetTokenExpiration = undefined;
+    .then(user => {
+      resetUser = user;
+      return bcrypt.hash(newPassword, 12)
+    })
+    .then(hashedPassword => {
+      resetUser.password = hashedPassword;
+      resetUser.resetToken = undefined;
+      resetUser.resetTokenExpiration = undefined;
 
-    return resetUser.save();
-  })
-  .then(result => {
-    res.redirect('/login');
-  })
-  .catch(err => console.log(err))
+      return resetUser.save();
+    })
+    .then(result => {
+      res.redirect('/login');
+    })
+    .catch(err => console.log(err))
 }
